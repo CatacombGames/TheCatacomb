@@ -274,7 +274,7 @@ void printscan (int sc)
 void calibratekeys (void)
 {
   char ch;
-  int hx,hy,i,select,new;
+  int hx,hy,i,select,newkey;
 
   expwin (22,15);
   print ("Keyboard Configuration\n\r");
@@ -317,25 +317,25 @@ void calibratekeys (void)
     select = ch - '0';
     print ("\n\rPress the new key:");
     clearkeys ();
-    new=-1;
-    while (!keydown[++new])
-      if (new==0x79)
-	new=-1;
-      else if (new==0x29)
-	new++;				// skip STUPID left shifts!
+    newkey=-1;
+    while (!keydown[++newkey])
+      if (newkey==0x79)
+	newkey=-1;
+      else if (newkey==0x29)
+	newkey++;				// skip STUPID left shifts!
     clearkeys ();
     print ("\r                  ");
     if (select<8)
-      key[select]=new;
+      key[select]=newkey;
     if (select==8)
-      keyB1=new;
+      keyB1=newkey;
     if (select==9)
-      keyB2=new;
+      keyB2=newkey;
     sy=select+7;
     sx=22;
     print ("        ");
     sx=22;
-    printscan (new);
+    printscan (newkey);
     ch='0';				// so the loop continues
     clearkeys ();
   } while (ch>='0' && ch<='9');
@@ -381,7 +381,7 @@ void getconfig (void)
     joy1ok = 2;
 
   mouseok = 1;
-  vect = (int far *) getvect (0x33);
+  vect = (int far *) MK_FP(peek(0,0x33*4+2),peek(0,0x33*4));
 
   if (vect == NULL)
     mouseok = 0;		// vecter is NULL, calling would be bad...
@@ -552,7 +552,7 @@ void controlpanel (void)
 	       if ( (int) newgrmode == collumn+1 )
 		 break;			// don't reload if not needed
 	       drawchar(collumnx[(int) newgrmode-1]+1,rowy[row]+3,32);
-	       grmode = newgrmode = (grtype) collumn + 1;	// becuase TEXT is 0
+	       grmode = newgrmode = (grtype) (collumn + 1);	// becuase TEXT is 0
 	       loadgrfiles ();
 	       setscreenmode (grmode);
 	       if (grmode==EGAgr)
@@ -617,28 +617,28 @@ void controlpanel (void)
 ===================
 */
 
-unsigned egaplane[4];			// main memory paragraph of plane image
+char huge *egaplane[4];			// main memory paragraph of plane image
 spritetype image, spritetable[NUMSPRITES];	// grfile headers
 pictype pictable[NUMPICS];
 void far *lastgrpic;
 
 int numchars,numtiles,numpics,numsprites;
 
-void installgrfile (char *filename, int unpack,void huge *inmem)
+void installgrfile (const char *filename, int unpack,void huge *inmem)
 {
   int i;
   unsigned long a,b,c,d;
   typedef pictype ptype[NUMPICS];
   typedef spritetype stype[NUMSPRITES];
 
-  typedef struct {void huge *charptr;
-		  void huge *tileptr;
-		  void huge *picptr;
-		  void huge *spriteptr;
-		  ptype huge *pictableptr;
-		  stype huge *spritetableptr;
-		  void huge *plane[4];
-		  int numchars,numtiles,numpics,numsprites;
+  typedef struct {dos::FarPtr charptr;		// far pointers as stored
+		  dos::FarPtr tileptr;		// in the file: segments are
+		  dos::FarPtr picptr;		// relative to the file start
+		  dos::FarPtr spriteptr;
+		  dos::FarPtr pictableptr;
+		  dos::FarPtr spritetableptr;
+		  dos::FarPtr plane[4];
+		  std::int16_t numchars,numtiles,numpics,numsprites;
 		 } picfiletype;
 
   picfiletype huge *picfile;
@@ -653,7 +653,7 @@ void installgrfile (char *filename, int unpack,void huge *inmem)
 	}
   else
 	{
-	 if ( (long)lastgrpic )
+	 if ( lastgrpic )
 	   farfree ((void far *)lastgrpic); // so new graphics modes will free it up
 
 	 if (unpack)
@@ -673,31 +673,29 @@ void installgrfile (char *filename, int unpack,void huge *inmem)
   if (grmode==EGAgr)		// EGA is special because of bit plane grief!
   {
     charptr = MK_FP(EGADATASTART,0);
-    tileptr = MK_FP(EGADATASTART+FP_SEG(picfile->tileptr)-FP_SEG(picfile->charptr),0);
-    picptr = MK_FP(EGADATASTART+FP_SEG(picfile->picptr)-FP_SEG(picfile->charptr),0);
-    spriteptr = MK_FP(EGADATASTART+FP_SEG(picfile->spriteptr)-FP_SEG(picfile->charptr),0);
+    tileptr = MK_FP(EGADATASTART+picfile->tileptr.seg-picfile->charptr.seg,0);
+    picptr = MK_FP(EGADATASTART+picfile->picptr.seg-picfile->charptr.seg,0);
+    spriteptr = MK_FP(EGADATASTART+picfile->spriteptr.seg-picfile->charptr.seg,0);
 
     for (i=0;i<4;i++)
     {
-      egaplane[i] = FP_SEG(picfile->plane[i])+FP_SEG(picfile);
-      egaspriteptr[i] = MK_FP(FP_SEG(picfile)+FP_SEG(picfile->plane[i]) +
-	FP_SEG(picfile->spriteptr) - FP_SEG(picfile->charptr),0);
+      egaplane[i] = (char huge *)picfile + 16L*picfile->plane[i].seg;
+      egaspriteptr[i] = (char huge *)picfile + 16L*(word)(picfile->plane[i].seg +
+	picfile->spriteptr.seg - picfile->charptr.seg);
     }
   }
   else
   {
-    charptr = MK_FP(FP_SEG(picfile)+FP_SEG(picfile->charptr),0);
-    tileptr = MK_FP(FP_SEG(picfile)+FP_SEG(picfile->tileptr),0);
-    picptr = MK_FP(FP_SEG(picfile)+FP_SEG(picfile->picptr),0);
-    spriteptr = MK_FP(FP_SEG(picfile)+FP_SEG(picfile->spriteptr),0);
+    charptr = (char huge *)picfile + 16L*picfile->charptr.seg;
+    tileptr = (char huge *)picfile + 16L*picfile->tileptr.seg;
+    picptr = (char huge *)picfile + 16L*picfile->picptr.seg;
+    spriteptr = (char huge *)picfile + 16L*picfile->spriteptr.seg;
   }
   //
   // copy tables into data segment
   //
-  picinfile = MK_FP(FP_SEG(picfile->pictableptr)+FP_SEG(picfile)
-    ,FP_OFF(picfile->pictableptr)+FP_OFF(picfile));
-  spriteinfile = MK_FP(FP_SEG(picfile->spritetableptr)+FP_SEG(picfile)
-    ,FP_OFF(picfile->spritetableptr)+FP_OFF(picfile));
+  picinfile = (ptype huge *)((char huge *)picfile + picfile->pictableptr.linear());
+  spriteinfile = (stype huge *)((char huge *)picfile + picfile->spritetableptr.linear());
   for (i=0; i<NUMPICS; i++)
     pictable[i] = (*picinfile)[i];
   for (i=0; i<NUMSPRITES; i++)
@@ -726,7 +724,7 @@ void moveega (void)
     outportb (SCindex,SCmapmask);
     outportb (SCindex+1,1<<plane);	// write plane #
 
-    movedata (egaplane[plane],0,EGADATASTART,0,0xffff-EGADATASTART);
+    _fmemcpy (MK_FP(EGADATASTART,0),egaplane[plane],0xffff-EGADATASTART);
   }
   outportb (SCindex,SCmapmask);		// read map select
   outportb (SCindex+1,15);	// all planes

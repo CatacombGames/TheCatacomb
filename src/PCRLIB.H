@@ -16,18 +16,15 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <dos.h>
-#include <mem.h>
-#include <sys\stat.h>
-#include <fcntl.h>
-#include <alloc.h>
-#include <io.h>
-#include <alloc.h>
-#include <string.h>
+#pragma once
 
-typedef enum {false,true} boolean;
+#include "dos/borland.h"	// dos.h mem.h sys\stat.h fcntl.h alloc.h io.h
+
+typedef std::int16_t boolean;	// was enum {false,true}: 16 bits like Borland's
 typedef unsigned char byte;
-typedef unsigned int word;
+typedef std::uint16_t word;
+
+#pragma pack(push,1)		// Borland -a- (byte alignment)
 
 char extern ch,str[80];
 
@@ -38,7 +35,7 @@ char extern ch,str[80];
 ** Tied into INT 8, with a speeded up timer!
 */
 
-typedef enum {off,spkr,sdlib} soundtype;
+typedef enum : std::int16_t {off,spkr,sdlib} soundtype;
 
 typedef struct {word start;
 		byte priority;
@@ -49,7 +46,7 @@ typedef struct {char id[4];
 		word filelength;
 		word filler[5];
 		spksndtype sounds[63];
-		word freqdata[];} SPKRtable;
+		word freqdata[1];} SPKRtable;
 
 
 soundtype extern soundmode;
@@ -73,21 +70,24 @@ void WaitEndSound (void);
 ** The control panel handles all this stuff!
 */
 
-typedef enum {north,east,south,west,northeast,southeast,southwest,
+typedef enum : std::int16_t {north,east,south,west,northeast,southeast,southwest,
 	      northwest,nodir} dirtype;
+
+inline dirtype operator++ (dirtype &d,int) {dirtype o=d;d=(dirtype)(d+1);return o;}
+inline dirtype operator-- (dirtype &d,int) {dirtype o=d;d=(dirtype)(d-1);return o;}
 
 typedef struct {dirtype dir;
 		boolean button1,button2;} ControlStruct;
 
-typedef enum {keyboard,mouse,joystick1,joystick2,demo} inputtype;
+typedef enum : std::int16_t {keyboard,mouse,joystick1,joystick2,demo} inputtype;
 
 inputtype extern playermode[3];
-boolean	extern keydown[128];
-int extern JoyXlow[3], JoyXhigh[3], JoyYlow [3], JoyYhigh [3];	// 1&2 are used
-int extern MouseSensitivity;
+std::atomic<boolean> extern keydown[128];	// written by the INT 9 handler
+std::int16_t extern JoyXlow[3], JoyXhigh[3], JoyYlow [3], JoyYhigh [3];	// 1&2 are used
+std::int16_t extern MouseSensitivity;
 char extern key[8], keyB1, keyB2;
 
-enum demoenum {notdemo,demoplay,recording};
+enum demoenum : std::int16_t {notdemo,demoplay,recording};
 enum demoenum extern indemo;
 
 void extern interrupt (*oldint9) ();
@@ -103,6 +103,7 @@ ControlStruct ControlMouse ();
 ControlStruct ControlJoystick (int joynum);
 ControlStruct ControlPlayer (int player);
 
+void RecordDemo (void);
 void LoadDemo (int demonum);
 void SaveDemo (int demonum);
 
@@ -115,18 +116,21 @@ void SaveDemo (int demonum);
 void extern far *lastparalloc;
 
 void huge *paralloc (long size);
-long unsigned int LoadFile(char *filename,char huge *buffer);
-void SaveFile(char *filename,char huge *buffer, long size);
-void huge *bloadin (char *filename);
-void huge *bloadinLZW (char *filename);
+long unsigned int LoadFile(const char *filename,char huge *buffer);
+void SaveFile(const char *filename,char huge *buffer, long size);
+void huge *bloadin (const char *filename);
+void huge *bloadinLZW (const char *filename);
 long RLEcompress (void far *source, long length, void far *dest);
 
 void initrndt (boolean randomize);
 int rndt (void);
+void initrnd (boolean randomize);
+int random (int maxval);
 
 void clearkeys (void);
 
-unsigned extern timecall,timeax,timebx,timecx,timedx,timesi,timedi,timebp,timees;
+void extern (*timecall)(void);
+unsigned extern timeax,timebx,timecx,timedx,timesi,timedi,timebp,timees;
 int timesub (int ticks);
 
 int _MouseInit(void);
@@ -135,7 +139,7 @@ void _MouseShow(void);
 int _MouseButton(void);
 void _MouseCoords(int *x,int *y);
 
-long _Verify(char *filename);
+long _Verify(const char *filename);
 
 void _printhexb(unsigned char value);
 void _printhex(unsigned value);
@@ -157,8 +161,8 @@ void _printbin(unsigned value);
 #define CRTCSTARTL 0xd
 #define CRTCSTARTH 0xc
 
-typedef enum {text,CGAgr,EGAgr,VGAgr} grtype;
-typedef enum {NOcard,MDAcard,CGAcard,EGAcard,MCGAcard,VGAcard,
+typedef enum : std::int16_t {text,CGAgr,EGAgr,VGAgr} grtype;
+typedef enum : std::int16_t {NOcard,MDAcard,CGAcard,EGAcard,MCGAcard,VGAcard,
 	      HGCcard=0x80,HGCPcard,HICcard} cardtype;
 
 grtype extern grmode;
@@ -167,7 +171,7 @@ cardtype extern _videocard;
 
 int extern sx,sy,leftedge,xormask;	// stuff for screen text output
 
-word extern CGAylookup [200],EGAylookup[200],VGAylookup[200];
+word extern CGAylookup [200],EGAylookup[256],VGAylookup[200];
 
 unsigned extern crtcaddr;
 
@@ -178,6 +182,7 @@ void EGAlatch (void);
 void EGAsplitscreen (int linenum);
 void crtcstart (unsigned start);
 cardtype VideoID (void);
+void EGAmove (void);
 
 /*=========================================================================*/
 
@@ -191,18 +196,18 @@ cardtype VideoID (void);
 unsigned extern EGADATASTART;
 
 typedef struct {
-		 int width;
-		 int height;
-		 void far *shapeptr;		// reletive to spriteptr
-		 void far *maskptr;
-		 int xl,yl,xh,yh;		// death box pixel offsets
+		 std::int16_t width;
+		 std::int16_t height;
+		 dos::FarPtr shapeptr;		// reletive to spriteptr
+		 dos::FarPtr maskptr;
+		 std::int16_t xl,yl,xh,yh;		// death box pixel offsets
 		 char name[12];
 	       } spritetype;
 
 typedef struct {
-		 int width;
-		 int height;
-		 void far *shapeptr;
+		 std::int16_t width;
+		 std::int16_t height;
+		 dos::FarPtr shapeptr;
 		 char name[8];
 	       } pictype;
 
@@ -223,7 +228,7 @@ unsigned extern screenseg;		// loaded into ES in the draw routines
 					// switches, page flipping, and scrolls
 
 void moveega (void);
-void installgrfile (char *filename,int unpack,void huge *inmem);
+void installgrfile (const char *filename,int unpack,void huge *inmem);
 
 void drawchar (int x, int y, int charnum);
 void drawtile (int x, int y, int picnum);
@@ -270,8 +275,8 @@ void repaintscreen (void);	// do any screen wierdness and redraw all
 ** game level routines
 */
 
-long extern score;
-int extern level;
+std::int32_t extern score;
+std::int16_t extern level;
 
 typedef struct { int width;
 		 int height;
@@ -285,11 +290,11 @@ typedef struct { int width;
 
 int	extern	_numlevels, _maxplayers;
 boolean	extern	_cgaok, _egaok, _vgaok;
-char	extern	*_extension;
+const char	extern	*_extension;
 
 struct scores {
-	 long score;
-	 int level;
+	 std::int32_t score;
+	 std::int16_t level;
 	 char initials[4];
 	};
 
@@ -304,7 +309,7 @@ void _showhighscores (void);
 void _checkhighscore (void);
 
 void _setupgame (void);
-void _quit (char *);		// shuts everything down
+void _quit (const char *);		// shuts everything down
 
 /*=========================================================================*/
 
@@ -314,6 +319,8 @@ unsigned int extern RLECompress
 
 void extern RLEExpand
   (char far *source, char far *dest, long origlen);
+
+#pragma pack(pop)
 
 
 

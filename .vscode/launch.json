@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "The Catacomb — debug",
+      "request": "launch",
+      "type": "lldb",
+      "program": "${workspaceFolder}/bin/macos-debug/catacomb",
+      "cwd": "${config:catacomb.dataDir}",
+      "args": [],
+      "stopAtEntry": false,
+      "windows": {
+        "type": "cppdbg",
+        "program": "${workspaceFolder}/bin/windows-debug/catacomb.exe"
+      },
+      "linux": {
+        "program": "${workspaceFolder}/bin/linux-debug/catacomb"
+      }
+    }
+  ]
+}

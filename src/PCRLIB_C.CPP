@@ -19,20 +19,19 @@
 #define CATALOG
 
 
-#include "pcrlib.h"
-#include <conio.h>
+#include "PCRLIB.H"
 
 char	ch,str[80];	// scratch space
 
 /*========================================================================*/
 
-inputtype playermode[3] = {0,keyboard,joystick1};
+inputtype playermode[3] = {(inputtype)0,keyboard,joystick1};
 
-boolean		keydown[128];
+std::atomic<boolean>	keydown[128];
 
-int JoyXlow [3], JoyXhigh [3], JoyYlow [3], JoyYhigh [3];
+std::int16_t JoyXlow [3], JoyXhigh [3], JoyYlow [3], JoyYhigh [3];
 
-int MouseSensitivity;
+std::int16_t MouseSensitivity;
 
 char key[8],keyB1,keyB2;
 
@@ -58,7 +57,7 @@ enum demoenum indemo;
 
 void SetupKBD ()
 {
- void far *vect = getvect (9);
+ void interrupt (*vect)() = getvect (9);
  int i;
 
  for (i=0;i<128;i++)			/* clear our key down table */
@@ -95,25 +94,7 @@ void interrupt Int9ISR ()
    keydown [key] = true;		/* make scan code */
    poke (0x40,0x1c,peek(0x40,0x1a));	/* clear the bios key buffer */
  }
-asm {
-   push ax
-   push	bx
-   push	cx
-   push	dx
-   push	si
-   push	di
-   push	bp
- }
  oldint9 ();				/* give it to DOS */
-asm {
-   pop	bp
-   pop  di
-   pop	si
-   pop	dx
-   pop	cx
-   pop	bx
-   pop	ax
- }
  outport (0x20,0x20);			/* tell the int manager we got it */
 }
 
@@ -293,7 +274,7 @@ void ReadJoystick (int joynum,int *xcount,int *ycount)
 
  outportb (0x201,inportb (0x201));	/* start the signal pulse */
 
- asm cli;
+ disable ();
 
  do
  {
@@ -304,7 +285,7 @@ void ReadJoystick (int joynum,int *xcount,int *ycount)
    *ycount+=a2;
  } while ((a1+a2!=0) && (*xcount<500) && (*ycount<500));
 
- asm sti;
+ enable ();
 }
 
 
@@ -455,7 +436,7 @@ void LoadDemo (int demonum)
   strcat (str,".");
   strcat (str,_extension);
 
-  LoadFile (str,MK_FP(_DS,&demobuffer));
+  LoadFile (str,demobuffer);
   level=demobuffer[0];
   demoptr = &demobuffer[1];
   indemo = demoplay;
@@ -471,7 +452,7 @@ void SaveDemo (int demonum)
   strcat (str,".");
   strcat (str,_extension);
 
-  SaveFile (str,MK_FP(_DS,&demobuffer),(demoptr-&demobuffer[0]));
+  SaveFile (str,demobuffer,(demoptr-&demobuffer[0]));
   indemo = notdemo;
 }
 
@@ -521,9 +502,8 @@ void far *lastparalloc;	// global variable of the EXACT (not paralign)
 void huge *paralloc (long size)
 {
  void huge *temp;
- word seg,ofs;
 /* allocate a block with extra space */
- lastparalloc = (void far*)temp = farmalloc (size+15);
+ lastparalloc = temp = farmalloc (size+15);
  if (temp == NULL)
  //
  // not enough memory!
@@ -533,15 +513,8 @@ void huge *paralloc (long size)
 	_quit ("Out of memory!");
  }
 
- ofs=FP_OFF(temp);
- if (ofs!=0)			/* set offset to 0 and bump segment */
- {
-  seg=FP_SEG(temp);
-  seg++;
-  ofs=0;
-  temp=MK_FP (seg,ofs);
- }
- return (void huge *) temp;
+ /* set offset to 0 and bump segment: align on 16 bytes */
+ return (void huge *) (((std::uintptr_t)temp + 15) & ~(std::uintptr_t)15);
 }
 
 //==========================================================================
@@ -555,84 +528,19 @@ void huge *paralloc (long size)
 ==============================================
 */
 
-unsigned long LoadFile(char *filename,char huge *buffer)
+unsigned long LoadFile(const char *filename,char huge *buffer)
 {
- unsigned int handle,flength1=0,flength2=0,buf1,buf2,foff1,foff2;
+ int handle;
+ long length;
 
- buf1=FP_OFF(buffer);
- buf2=FP_SEG(buffer);
+ if ((handle = open (filename,O_RDONLY | O_BINARY)) == -1)
+   return 0;				// OPEN failed
 
-asm		mov	WORD PTR foff1,0  	// file offset = 0 (start)
-asm		mov	WORD PTR foff2,0
+ length = filelength (handle);	// SEEK (find file length)
+ read (handle,buffer,length);	// READ w/handle
+ close (handle);			// CLOSE w/handle
 
-asm		mov	dx,filename
-asm		mov	ax,3d00h		// OPEN w/handle (read only)
-asm		int	21h
-asm		jc	out
-
-asm		mov	handle,ax
-asm		mov	bx,ax
-asm		xor	cx,cx
-asm		xor	dx,dx
-asm		mov	ax,4202h
-asm		int	21h			// SEEK (find file length)
-asm		jc	out
-
-asm		mov	flength1,ax
-asm		mov	flength2,dx
-
-asm		mov	cx,flength2
-asm		inc	cx			// <- at least once!
-
-L_1:
-
-asm		push	cx
-
-asm		mov	cx,foff2
-asm		mov	dx,foff1
-asm		mov	ax,4200h
-asm		int	21h			// SEEK from start
-
-asm		push	ds
-asm		mov	bx,handle
-asm		mov	cx,-1
-asm		mov	dx,buf1
-asm		mov	ax,buf2
-asm		mov	ds,ax
-asm		mov	ah,3fh			// READ w/handle
-asm		int	21h
-asm		pop	ds
-
-asm		pop	cx
-asm		jc	out
-asm		cmp	ax,-1
-asm		jne	out
-
-asm		push	cx			// need to read the last byte
-asm		push	ds			// into the segment! IMPORTANT!
-asm		mov	bx,handle
-asm		mov	cx,1
-asm		mov	dx,buf1
-asm		add	dx,-1
-asm		mov	ax,buf2
-asm		mov	ds,ax
-asm		mov	ah,3fh
-asm		int	21h
-asm		pop	ds
-asm		pop	cx
-
-asm		add	buf2,1000h
-asm		inc	WORD PTR foff2
-asm		loop	L_1
-
-out:
-
-asm		mov	bx,handle		// CLOSE w/handle
-asm		mov	ah,3eh
-asm		int	21h
-
-return (flength2*0x10000+flength1);
-
+ return length;
 }
 
 //===========================================================================
@@ -646,65 +554,15 @@ return (flength2*0x10000+flength1);
 ==============================================
 */
 
-void SaveFile(char *filename,char huge *buffer, long size)
+void SaveFile(const char *filename,char huge *buffer, long size)
 {
- unsigned int handle,buf1,buf2,foff1,foff2;
+ int handle;
 
- buf1=FP_OFF(buffer);
- buf2=FP_SEG(buffer);
+ if ((handle = open (filename,O_WRONLY | O_BINARY | O_CREAT | O_TRUNC)) == -1)
+   return;				// CREATE failed
 
-asm		mov	WORD PTR foff1,0  		// file offset = 0 (start)
-asm		mov	WORD PTR foff2,0
-
-asm		mov	dx,filename
-asm		mov	ax,3c00h		// CREATE w/handle (read only)
-asm		xor	cx,cx
-asm		int	21h
-asm		jc	out
-
-asm		mov	handle,ax
-asm		cmp	word ptr size+2,0	// larger than 1 segment?
-asm		je	L2
-
-L1:
-
-asm		push	ds
-asm		mov	bx,handle
-asm		mov	cx,8000h
-asm		mov	dx,buf1
-asm		mov	ax,buf2
-asm		mov	ds,ax
-asm		mov	ah,40h			// WRITE w/handle
-asm		int	21h
-asm		pop	ds
-
-asm		add	buf2,800h		// bump ptr up 1/2 segment
-asm		sub	WORD PTR size,8000h		// done yet?
-asm		sbb	WORD PTR size+2,0
-asm		cmp	WORD PTR size+2,0
-asm		ja	L1
-asm		cmp	WORD PTR size,8000h
-asm		jae	L1
-
-L2:
-
-asm		push	ds
-asm		mov	bx,handle
-asm		mov	cx,WORD PTR size
-asm		mov	dx,buf1
-asm		mov	ax,buf2
-asm		mov	ds,ax
-asm		mov	ah,40h			// WRITE w/handle
-asm		int	21h
-asm		pop	ds
-asm		jmp	out
-
-out:
-
-asm		mov	bx,handle		// CLOSE w/handle
-asm		mov	ah,3eh
-asm		int	21h
-
+ write (handle,buffer,size);	// WRITE w/handle
+ close (handle);			// CLOSE w/handle
 }
 
 //==========================================================================
@@ -720,7 +578,7 @@ asm		int	21h
 ====================================
 */
 
-void huge *bloadin (char *filename)
+void huge *bloadin (const char *filename)
 {
  int handle;
  long length;
@@ -729,7 +587,7 @@ void huge *bloadin (char *filename)
  if ( (handle = open (filename,O_BINARY)) != -1 )
    {
     length = filelength (handle);
-    location = paralloc (length);
+    location = (char huge *)paralloc (length);
     close (handle);
     LoadFile (filename,location);
     return location;
@@ -769,7 +627,7 @@ int sx,sy,leftedge;
 
 void setscreenmode (grtype mode)
 {
-  char extern VGAPAL;			// deluxepaint vga pallet .OBJ file
+  int extern VGAPAL;			// deluxepaint vga pallet .OBJ file
   void far *vgapal = &VGAPAL;
 
   switch (mode)
@@ -791,8 +649,9 @@ void setscreenmode (grtype mode)
     case VGAgr: _AX = 0x13;
 		geninterrupt (0x10);
 		screenseg=0xa000;
-		_ES = FP_SEG(vgapal);
-		_DX = FP_OFF(vgapal);
+		_fmemcpy (MK_FP(0x9000,0),vgapal,0x300);	// the BIOS reads
+		_ES = 0x9000;				// conventional memory
+		_DX = 0;
 		_BX = 0;
 		_CX = 0x100;
 		_AX = 0x1012;
@@ -1050,7 +909,7 @@ int _MouseInit(void)
  union REGS regs;
  unsigned char far *vector;
 
- if ((vector=MK_FP(peek(0,0x33*4+2),peek(0,0x33*4)))==NULL) return 0;
+ if ((vector=(unsigned char far *)MK_FP(peek(0,0x33*4+2),peek(0,0x33*4)))==NULL) return 0;
 
  if (*vector == 207)
    return _MouseStatus = 0;
@@ -1117,7 +976,7 @@ void _MouseCoords(int *x,int *y)
 // Verify a file's existence
 //
 ////////////////////////////////////////////////////////////////////
-long _Verify(char *filename)
+long _Verify(const char *filename)
 {
  int handle;
  long size;
@@ -1140,7 +999,7 @@ long _Verify(char *filename)
 void _printhexb(unsigned char value)
 {
  int loop;
- char hexstr[16]="0123456789ABCDEF",str[2]="";
+ char hexstr[17]="0123456789ABCDEF",str[2]="";
 
  for (loop=0;loop<2;loop++)
    {
@@ -1205,7 +1064,7 @@ void _printc(char *string)
 ////////////////////////////////////////////////////////////////////
 unsigned _inputint(void)
 {
- char string[18]="",digit,hexstr[16]="0123456789ABCDEF";
+ char string[18]="",digit,hexstr[17]="0123456789ABCDEF";
  unsigned value,loop,loop1;
 
  _input(string,17);
@@ -1288,11 +1147,11 @@ int _input(char *string,int max)
 
 struct scores scoreswap, highscores[5];
 
-long score;
-int level;
+std::int32_t score;
+std::int16_t level;
 int _numlevels, _maxplayers;
 
-char *_extension = "PCR";
+const char *_extension = "PCR";
 boolean	_cgaok, _egaok, _vgaok;
 
 ////////////////////////
@@ -1576,9 +1435,7 @@ void _setupgame (void)
 //
 ////////////////////
 
-char extern far PIRACY;
-
-void _quit (char *error)
+void _quit (const char *error)
 {
   setscreenmode (text);
   if (!(*error))
@@ -1610,8 +1467,6 @@ void _quit (char *error)
 #endif
 
 
-
-//  movedata (FP_SEG(&PIRACY),FP_OFF(&PIRACY),0xb800,0,4000);
 
 //  clearkeys ();
 

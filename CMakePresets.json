@@ -1,0 +1,156 @@
+{
+    "version": 6,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 25,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "CMAKE_RUNTIME_OUTPUT_DIRECTORY": "${sourceDir}/bin/${presetName}"
+            }
+        },
+        {
+            "name": "debug",
+            "hidden": true,
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "release",
+            "hidden": true,
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "windows",
+            "hidden": true,
+            "inherits": "base",
+            "description": "MSVC (run from a Developer Command Prompt / PowerShell)",
+            "architecture": {
+                "value": "x64",
+                "strategy": "external"
+            },
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "cl",
+                "CMAKE_CXX_COMPILER": "cl"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "macos",
+            "hidden": true,
+            "inherits": "base",
+            "cacheVariables": {
+                "CMAKE_OSX_DEPLOYMENT_TARGET": "11.0"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Darwin"
+            }
+        },
+        {
+            "name": "linux",
+            "hidden": true,
+            "inherits": "base",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
+            "name": "windows-debug",
+            "displayName": "Windows Debug",
+            "inherits": [
+                "windows",
+                "debug"
+            ]
+        },
+        {
+            "name": "windows-release",
+            "displayName": "Windows Release",
+            "inherits": [
+                "windows",
+                "release"
+            ]
+        },
+        {
+            "name": "macos-debug",
+            "displayName": "macOS Debug",
+            "inherits": [
+                "macos",
+                "debug"
+            ]
+        },
+        {
+            "name": "macos-release",
+            "displayName": "macOS Release",
+            "inherits": [
+                "macos",
+                "release"
+            ]
+        },
+        {
+            "name": "linux-debug",
+            "displayName": "Linux Debug",
+            "inherits": [
+                "linux",
+                "debug"
+            ]
+        },
+        {
+            "name": "linux-release",
+            "displayName": "Linux Release",
+            "inherits": [
+                "linux",
+                "release"
+            ]
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "windows-debug",
+            "displayName": "Windows Debug",
+            "configurePreset": "windows-debug"
+        },
+        {
+            "name": "windows-release",
+            "displayName": "Windows Release",
+            "configurePreset": "windows-release"
+        },
+        {
+            "name": "macos-debug",
+            "displayName": "macOS Debug",
+            "configurePreset": "macos-debug"
+        },
+        {
+            "name": "macos-release",
+            "displayName": "macOS Release",
+            "configurePreset": "macos-release"
+        },
+        {
+            "name": "linux-debug",
+            "displayName": "Linux Debug",
+            "configurePreset": "linux-debug"
+        },
+        {
+            "name": "linux-release",
+            "displayName": "Linux Release",
+            "configurePreset": "linux-release"
+        }
+    ]
+}

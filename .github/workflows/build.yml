@@ -1,0 +1,52 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - { os: ubuntu-24.04, preset: linux }
+          - { os: macos-15, preset: macos }
+          - { os: windows-2022, preset: windows }
+        config: [debug, release]
+    runs-on: ${{ matrix.platform.os }}
+    name: ${{ matrix.platform.preset }}-${{ matrix.config }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libasound2-dev libpulse-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev \
+            libxi-dev libxss-dev libxtst-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev libegl1-mesa-dev \
+            libgl1-mesa-dev libdrm-dev libgbm-dev libudev-dev
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: MSVC environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.platform.preset }}-${{ matrix.config }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.platform.preset }}-${{ matrix.config }}
+
+      - name: Package
+        run: cmake --install build/${{ matrix.platform.preset }}-${{ matrix.config }} --prefix dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: catacomb-${{ matrix.platform.preset }}-${{ matrix.config }}
+          path: dist

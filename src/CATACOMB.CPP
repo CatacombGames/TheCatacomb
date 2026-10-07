@@ -22,7 +22,7 @@
 ** catacomb II -- the c translation...
 */
 
-#include "pcrlib.h"
+#include "PCRLIB.H"
 #include "NGRABCA2.H"
 #include "SOUNDS.H"
 
@@ -42,41 +42,45 @@
 #define tile5s tile4s+19*16
 #define lasttile tile5s+19*25
 
-typedef enum {playercmd,gargcmd,dragoncmd,ramstraight,ramdiag,straight,idle,
+typedef enum : std::int16_t {playercmd,gargcmd,dragoncmd,ramstraight,ramdiag,straight,idle,
     fade,explode,gunthinke,gunthinks} thinktype;
 
-typedef enum {benign,monster,pshot,mshot,nukeshot} tagtype;
+typedef enum : std::int16_t {benign,monster,pshot,mshot,nukeshot} tagtype;
 
-typedef enum {nothing,player,goblin,skeleton,ogre,gargoyle,dragon,turbogre,
+typedef enum : std::int16_t {nothing,player,goblin,skeleton,ogre,gargoyle,dragon,turbogre,
     wallhit,shot,bigshot,rock,dead1,dead2,dead3,dead4,dead5,dead6,teleporter,
     torch,secretgate,gune,guns,lastclass} classtype;
 
-typedef enum {ingame,intitle,inscores} statetype;
+inline classtype operator++ (classtype &c,int) {classtype o=c;c=(classtype)(c+1);return o;}
+
+typedef enum : std::int16_t {ingame,intitle,inscores} statetype;
+
+#pragma pack(push,1)		// the asm routines rely on these exact layouts
 
 
 typedef struct {
   boolean active;	/*if false, the object has not seen the player yet*/
-  classtype  class;
+  classtype  obclass;
   byte  x,y,		/*location of upper left corner in world*/
     stage,		/*animation frame being drawn*/
     delay;		/*number of frames to pause without doing anything*/
   dirtype  dir;		/*direction facing*/
   char hp;		/*hit points*/
   byte oldx,oldy;	/*position where it was last drawn*/
-  int oldtile;		/*origin tile when last drawn*/
+  std::int16_t oldtile;	/*origin tile when last drawn*/
   char filler[1];	/*pad to 16 bytes*/
    } activeobj;
 
 typedef struct {	/*holds a copy of activeobj, and its class info*/
   boolean  active;	/*if false, the object has not seen the player yet*/
-  classtype  class;
+  classtype  obclass;
   byte  x,y,		/*location of upper left corner in world*/
     stage,		/*animation frame being drawn*/
     delay;		/*number of frames to pause without doing anything*/
   dirtype  dir;		/*direction facing*/
   char hp;		/*hit points*/
   byte oldx,oldy;		/*position where it was last drawn*/
-  int oldtile;		/*origin tile when last drawn*/
+  std::int16_t oldtile;	/*origin tile when last drawn*/
   char filler[1];	/*pad to 16 bytes*/
 
   byte think;
@@ -92,6 +96,8 @@ typedef struct {	/*holds a copy of activeobj, and its class info*/
   word  points;
   char filler2[2];	/*pad to 32 bytes*/
   } objdesc;
+
+static_assert (sizeof(activeobj)==16 && sizeof(objdesc)==32);
 
 
 /*=================*/
@@ -148,7 +154,7 @@ typedef struct {	/*holds a copy of activeobj, and its class info*/
   int originx, originy;			/*current world location of ul corn*/
   byte priority [maxpics+1];		/*tile draw overlap priorities*/
 
-  int items[6],saveitems[6];
+  std::int16_t items[6],saveitems[6];
   int shotpower;			/*0-13 characters in power meter*/
   int side;	                        /*which side shots come from*/
   int boltsleft;			/*number of shots left in a bolt*/
@@ -172,6 +178,8 @@ typedef struct {	/*holds a copy of activeobj, and its class info*/
     word points;
     byte filler[2];
   } objdef [lastclass];
+
+#pragma pack(pop)
 
 
   int i,j,k,x,y,z;
@@ -218,6 +226,8 @@ void extern egamove (void);
 void extern cgarefresh (void);
 void extern egarefresh (void);
 void dofkeys (void);
+
+#include "CATASM.CPP"		// was assembled and linked separately
 
 
 
@@ -300,7 +310,7 @@ void loadgrfiles ()
     if (picsexact != NULL)
       farfree (picsexact);
     pics= (char far *)bloadin("CGACHARS.CA2");
-    picsexact = lastparalloc;
+    picsexact = (char far *)lastparalloc;
     installgrfile ("CGAPICS.CA2",0,0);
     setscreenmode (grmode);
   }
@@ -379,7 +389,7 @@ void help (void)
 {
   int x,y;
   char far *oldcharptr;
-#define OLDSET oldcharptr = charptr;charptr = MK_FP(0xa400,0);
+#define OLDSET oldcharptr = (char far *)charptr;charptr = MK_FP(0xa400,0);
 #define NEWSET charptr = oldcharptr;
 
   centerwindow (20,20);
@@ -557,7 +567,7 @@ void loadlevel(void)
      nothing,nothing};
 
   char filename[64],st[64];
-  int x,y,xx,yy,recs, btile;
+  int x=0,y=0,xx,yy,recs, btile;	// x,y were read uninitialized below
   char sm[4096],rle[4096];
 
   strcpy (filename,"level");
@@ -566,7 +576,7 @@ void loadlevel(void)
   strcat (filename,".CA2");
 
   LoadFile (filename,rle);
-  RLEExpand(&rle[4],&sm,4096);
+  RLEExpand(&rle[4],sm,4096);
 
   numobj=0;
   o[0].x=13;          /*just defaults if no player token is found*/
@@ -605,13 +615,13 @@ void loadlevel(void)
 	      {
 		numobj++;
 		o[numobj].active=false;
-		o[numobj].class=tokens[btile-230];
+		o[numobj].obclass=tokens[btile-230];
 		o[numobj].x=xx+leftoff;
 		o[numobj].y=yy+topoff;
 		o[numobj].stage=0;
 		o[numobj].delay=0;
 		o[numobj].dir=(dirtype)(rndt()/64);  /*random 0-3*/
-		o[numobj].hp=objdef[o[numobj].class].hitpoints;
+		o[numobj].hp=objdef[o[numobj].obclass].hitpoints;
 		o[numobj].oldx=x;
 		o[numobj].oldy=y;
 		o[numobj].oldtile=-1;
@@ -649,9 +659,9 @@ void loadlevel(void)
 /*==========================================================================*/
 
 
-#include "cat_play.c"
+#include "CAT_PLAY.CPP"
 
-#include "objects.c"
+#include "OBJECTS.CPP"
 
 
 /*
@@ -720,7 +730,7 @@ void playsetup()
     score=0;
     level=1;
     o[0].active = true;
-    o[0].class = player;
+    o[0].obclass = player;
     o[0].hp = 13;
     o[0].dir=west;
     o[0].stage=0;
@@ -1117,10 +1127,10 @@ void gameover (void)
 //
 ///////////////////////////////////////////////////////////////////////////
 int
-US_CheckParm(char *parm,char **strings)
+US_CheckParm(char *parm,const char **strings)
 {
-	char	cp,cs,
-			*p,*s;
+	char	cp,cs,*p;
+	const char *s;
 	int		i;
 
 	while (!isalpha(*parm))	// Skip non-alphas
@@ -1147,7 +1157,7 @@ US_CheckParm(char *parm,char **strings)
 /***************************************************************************/
 /***************************************************************************/
 
-static	char			*EntryParmStrings[] = {"detour",0};
+static	const char		*EntryParmStrings[] = {"detour",0};
 
 /*=========================*/
 /*			   */

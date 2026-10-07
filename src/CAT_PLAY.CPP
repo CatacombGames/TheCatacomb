@@ -28,7 +28,7 @@ int newobject()
   int i;
 
   for (i=1; i<= numobj; i++)
-    if (o[i].class==nothing)
+    if (o[i].obclass==nothing)
 	goto gotit;
   if (numobj<maxobj)
     numobj++;
@@ -107,10 +107,11 @@ void printbody()
 
 void levelcleared()
 {
-  char warp[2];
-  int value;
+  char warp[3];		// was [2]: warp[2] below wrote past the end and
+  int value;		// atoi read an unterminated string
 
   leveldone=true;
+  warp[2]=0;
 
   warp[0]=(char) background[altobj.y+2][altobj.x]-161;
   if ( (warp[0]<'0') || (warp[0]>'9') )
@@ -263,7 +264,7 @@ void castbolt()
 /*	    */
 void castnuke()
 {
-  int i,x,y,n;
+  int i,x=0,y=0,n;	// x,y were read uninitialized below
   activeobj base;
 
   if (items[5]==0)
@@ -285,7 +286,7 @@ void castnuke()
   base.oldx=x;
   base.oldy=y;
   base.oldtile=-1;
-  base.class=bigshot;
+  base.obclass=bigshot;
 
   for (x=-1; x<=1; x++)
     {	    /*make a whole buch of bigshots*/
@@ -325,37 +326,37 @@ void castnuke()
 
 void playshoot()
 {
-  int new;
+  int newnum;
 
   obj.stage=2;
   obj.delay=4;
   PlaySound (SHOTSND);
 
-  new=newobject();
+  newnum=newobject();
 
-  o[new].class=shot;
+  o[newnum].obclass=shot;
   side^=1;
-  o[new].delay=0;
-  o[new].stage=0;
-  o[new].active=true;
-  o[new].dir=obj.dir;  /*missile is allways facing same way as thrower*/
-  switch ( o[new].dir )
+  o[newnum].delay=0;
+  o[newnum].stage=0;
+  o[newnum].active=true;
+  o[newnum].dir=obj.dir;  /*missile is allways facing same way as thrower*/
+  switch ( o[newnum].dir )
   {
     case north:
-	     o[new].x=obj.x+side;
-	     o[new].y=obj.y;
+	     o[newnum].x=obj.x+side;
+	     o[newnum].y=obj.y;
 	     break;
     case east:
-	     o[new].x=obj.x+1;
-	     o[new].y=obj.y+side;
+	     o[newnum].x=obj.x+1;
+	     o[newnum].y=obj.y+side;
 	     break;
     case south:
-	     o[new].x=obj.x+side;
-	     o[new].y=obj.y+1;
+	     o[newnum].x=obj.x+side;
+	     o[newnum].y=obj.y+1;
 	     break;
     case west:
-	     o[new].x=obj.x;
-	     o[new].y=obj.y+side;
+	     o[newnum].x=obj.x;
+	     o[newnum].y=obj.y+side;
 	     break;
   }
 }
@@ -364,20 +365,20 @@ void playshoot()
 
 void playbigshoot()
 {
-  int new;
+  int newnum;
 
   obj.stage=2;
   if (boltsleft==0)
     obj.delay=4;
   PlaySound (BIGSHOTSND);
-  new=newobject();
-  o[new].delay=0;
-  o[new].stage=0;
-  o[new].active=true;
-  o[new].dir=obj.dir;  /*missile is allways facing same way as thrower*/
-  o[new].x=obj.x;
-  o[new].y=obj.y;      /*start bigshot at same coordinate at player*/
-  o[new].class=bigshot;
+  newnum=newobject();
+  o[newnum].delay=0;
+  o[newnum].stage=0;
+  o[newnum].active=true;
+  o[newnum].dir=obj.dir;  /*missile is allways facing same way as thrower*/
+  o[newnum].x=obj.x;
+  o[newnum].y=obj.y;      /*start bigshot at same coordinate at player*/
+  o[newnum].obclass=bigshot;
 }
 
 
@@ -466,7 +467,7 @@ void tagobject ()
 {
   int i=altobj.hp;
 
-  if ((GODMODE) && (altobj.class == player))
+  if ((GODMODE) && (altobj.obclass == player))
 		return;
 
   altobj.hp -= obj.damage;
@@ -477,7 +478,7 @@ void tagobject ()
 	 {
 /*      erasealtobj;		*/	/*because dead has lower priority*/
 
-		if (altobj.class == player)
+		if (altobj.obclass == player)
 	{
 	  altobj.hp = o[0].hp = 0;
 	  printbody();
@@ -494,7 +495,7 @@ void tagobject ()
 	  PlaySound (KILLMONSND);
 	}
       /*change class to a deadthing of same size*/
-      o[altnum].class=(classtype)(dead1-1+altobj.size);
+      o[altnum].obclass=(classtype)(dead1-1+altobj.size);
       o[altnum].delay=2;
       o[altnum].stage=0; /*start of fade*/
     }
@@ -504,7 +505,7 @@ void tagobject ()
 /*wasn't killed*/
 
     {
-      if ( o[altnum].class == guns || o[altnum].class == gune )
+      if ( o[altnum].obclass == guns || o[altnum].obclass == gune )
 	return;
       o[altnum].hp=altobj.hp;	/*save the new hp status*/
       o[altnum].stage=3;	/*set it to ouch stage*/
@@ -544,15 +545,15 @@ boolean intomonster()
   /* make a copy of the objects info into a global varriable */
 
     memcpy (&altobj.active,&o[altnum],sizeof(o[altnum]) );
-    if ( (altobj.class>nothing) && (altnum!=objecton) )
+    if ( (altobj.obclass>nothing) && (altnum!=objecton) )
       {
-	memcpy (&altobj.think,&objdef[altobj.class],sizeof(objdef[altobj.class]) );
+	memcpy (&altobj.think,&objdef[altobj.obclass],sizeof(objdef[altobj.obclass]) );
 	if ( (chkx>=altobj.x) && (chkx-altobj.x<altobj.size)
 	&& (chky>=altobj.y) && (chky-altobj.y<altobj.size) )
 	  if (altobj.solid)
 	    gotit=true;
 	  else
-	    if ( (objecton==0) && (altobj.class==teleporter || altobj.class==secretgate) )
+	    if ( (objecton==0) && (altobj.obclass==teleporter || altobj.obclass==secretgate) )
 	    /*player got to the teleporter*/
 	      levelcleared();
       }
@@ -581,7 +582,7 @@ boolean intomonster()
 	  obj.delay=20;   /*delay for several frames*/
 	}
       else
-	if (altobj.class==shot)  /*they can walk into shots*/
+	if (altobj.obclass==shot)  /*they can walk into shots*/
 	  return true;
       return false;
 
@@ -608,7 +609,7 @@ boolean intomonster()
 
 boolean walkthrough()
 {
-  int new;
+  int newnum;
 
   if (chkspot ==blankfloor)
     return true;
@@ -625,13 +626,13 @@ boolean walkthrough()
     if ( (obj.contact==pshot) || (obj.contact==nukeshot) || (obj.contact==mshot) )
   /*make an explosion over the wall*/
     {
-      new = newobject();
-      o[new].active=true;
-      o[new].x=chkx;
-      o[new].y=chky;
-      o[new].stage=0;
-      o[new].delay=2;
-      o[new].class=wallhit;
+      newnum = newobject();
+      o[newnum].active=true;
+      o[newnum].x=chkx;
+      o[newnum].y=chky;
+      o[newnum].stage=0;
+      o[newnum].delay=2;
+      o[newnum].obclass=wallhit;
       PlaySound (TAGWALLSND);
     }
     return false;
@@ -651,13 +652,13 @@ boolean walkthrough()
        /*hidden potion,scroll,key*/
 
      /*make an explosion over the wall*/
-     new = newobject();
-     o[new].active=true;
-     o[new].x=chkx;
-     o[new].y=chky;
-     o[new].stage=0;
-     o[new].delay=2;
-     o[new].class=dead1;
+     newnum = newobject();
+     o[newnum].active=true;
+     o[newnum].x=chkx;
+     o[newnum].y=chky;
+     o[newnum].stage=0;
+     o[newnum].delay=2;
+     o[newnum].obclass=dead1;
      if (obj.contact==pshot)
        return false;
      else
@@ -671,7 +672,7 @@ boolean walkthrough()
 /* potion bottle */
   if (chkspot==162)
   {
-    if (obj.class==player)
+    if (obj.obclass==player)
     {
       givepotion();
       view[chky][chkx]=blankfloor;  /*erase icon*/
@@ -684,7 +685,7 @@ boolean walkthrough()
 /*scroll*/
   if (chkspot==163)
   {
-    if (obj.class==player)
+    if (obj.obclass==player)
     {
       givescroll();
       view[chky][chkx]=blankfloor;  /*erase icon*/
@@ -697,7 +698,7 @@ boolean walkthrough()
 /* key */
   if (chkspot==164)
   {
-    if (obj.class==player)
+    if (obj.obclass==player)
     {
       givekey();
       view[chky][chkx]=blankfloor;  /*erase icon*/
@@ -711,7 +712,7 @@ boolean walkthrough()
 /* doors */
    if (chkspot==165 || chkspot==166)
    {
-    if (obj.class==player)
+    if (obj.obclass==player)
       {
 	if (takekey())
 	{
@@ -726,7 +727,7 @@ boolean walkthrough()
 
    if (chkspot==167)
    {
-     if (obj.class==player)
+     if (obj.obclass==player)
      {
        score+=500;
        printscore();
@@ -760,7 +761,7 @@ boolean walk (void)
 
 {
   int i,size,newx,newy,deltay,deltax;
-  boolean try;
+  boolean tryit;
 
 
   switch (obj.dir)
@@ -809,12 +810,12 @@ boolean walk (void)
       chkspot=view[chky][chkx];
       if (chkspot!=blankfloor)
       {
-	try=walkthrough();
+	tryit=walkthrough();
         if (leveldone)      /*player hit the teleporter*/
 	  return(true);
 	if (obj.stage==2)    /*if they attacked something, its good*/
 	  return(true);
-	if (!try)    /*ran into something that's not ok*/
+	if (!tryit)    /*ran into something that's not ok*/
 	  return(false);
       }
       chkx=chkx+deltax;
@@ -1227,7 +1228,7 @@ void gargthink(void)
 
 // with o[n] do  /*get a free spot*/
 
-    o[n].class=rock;
+    o[n].obclass=rock;
     o[n].delay=0;
     o[n].stage=0;
     o[n].active=true;
@@ -1286,7 +1287,7 @@ void dragonthink(void)
 
 // with o[n]. do  /*get a free spot*/
 
-    o[n].class=bigshot;
+    o[n].obclass=bigshot;
     o[n].delay=0;
     o[n].stage=0;
     o[n].active=true;
@@ -1339,11 +1340,11 @@ void gunthink(int dir)
 
 // with o[n]. do  /*get a free spot*/
 
-  o[n].class=bigshot;
+  o[n].obclass=bigshot;
   o[n].delay=0;
   o[n].stage=0;
   o[n].active=true;
-  o[n].dir=dir;  /*missile is allways facing same way as thrower*/
+  o[n].dir=(dirtype)dir;  /*missile is allways facing same way as thrower*/
   o[n].x=obj.x;
   o[n].y=obj.y;
 }
@@ -1363,7 +1364,7 @@ void shooterthink(void)
   || (obj.x>originx+22) || (obj.y>originy+22)
   || !walk() || (obj.stage==2))
     {
-      obj.class=nothing;
+      obj.obclass=nothing;
     }
 }
 
@@ -1397,7 +1398,7 @@ void fadethink(void)
   obj.delay=2;
   if (obj.stage==obj.stages)
     {
-      obj.class=nothing;
+      obj.obclass=nothing;
     }
 }
 
@@ -1411,7 +1412,7 @@ void fadethink(void)
 void killnear(int chkx,int chky)
 
 {
-  int spot,new;
+  int spot,newnum;
 
   spot=background[chky][chkx];
 
@@ -1428,14 +1429,14 @@ void killnear(int chkx,int chky)
 
 // with o[newobject]. do
 
-  new = newobject ();
+  newnum = newobject ();
 
-  o[new].active=true;
-  o[new].x=chkx;
-  o[new].y=chky;
-  o[new].stage=0;
-  o[new].delay=2;
-  o[new].class=dead1;
+  o[newnum].active=true;
+  o[newnum].x=chkx;
+  o[newnum].y=chky;
+  o[newnum].stage=0;
+  o[newnum].delay=2;
+  o[newnum].obclass=dead1;
 }
 
 
@@ -1453,7 +1454,7 @@ void explodethink(void)
   obj.delay=2;
   if (obj.stage==obj.stages)
     {
-      obj.class=nothing;
+      obj.obclass=nothing;
     }
 }
 
@@ -1506,7 +1507,7 @@ void doactive(void)
 {
 /*see if it is way off screen, so deactivate*/
 
-  if ((obj.class!=dead1) && ( (obj.x<originx-10) || (obj.x>originx+34)
+  if ((obj.obclass!=dead1) && ( (obj.x<originx-10) || (obj.x>originx+34)
   || (obj.y<originy-10) || (obj.y>originy+34)))
     {
       o[objecton].active=false;
@@ -1520,7 +1521,7 @@ void doactive(void)
 
    /*redraw it even if it hasn't moved, in case it was hit*/
 
-      if (obj.class>nothing)
+      if (obj.obclass>nothing)
 	drawobj();
 
       /*write the temporary info back into the array*/
